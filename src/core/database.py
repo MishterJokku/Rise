@@ -123,3 +123,97 @@ def create_initial_profile(name, age, height_cm, current_weight, goal_weight):
 
     finally:
         connection.close()
+
+
+def calculate_progress(start_value, current_value, target_value):
+    if start_value is None or current_value is None or target_value is None:
+        return 0
+
+    if start_value == target_value:
+        return 100
+
+    # Weight loss goal: 72 -> 65
+    if target_value < start_value:
+        progress = ((start_value - current_value) / (start_value - target_value)) * 100
+    # Weight gain goal: 55 -> 65
+    else:
+        progress = ((current_value - start_value) / (target_value - start_value)) * 100
+
+    return max(0, min(100, round(progress, 1)))
+
+
+def get_dashboard_data():
+    connection = get_connection()
+
+    try:
+        user = connection.execute(
+            """
+            SELECT *
+            FROM users
+            ORDER BY id ASC
+            LIMIT 1;
+            """
+        ).fetchone()
+
+        if user is None:
+            return None
+
+        weight_goal = connection.execute(
+            """
+            SELECT *
+            FROM goals
+            WHERE user_id = ?
+              AND module_key = 'health'
+              AND goal_type = 'weight'
+              AND status = 'active'
+            ORDER BY id DESC
+            LIMIT 1;
+            """,
+            (user["id"],),
+        ).fetchone()
+
+        latest_weight = connection.execute(
+            """
+            SELECT *
+            FROM health_weight_logs
+            WHERE user_id = ?
+            ORDER BY date DESC, id DESC
+            LIMIT 1;
+            """,
+            (user["id"],),
+        ).fetchone()
+
+        today_nutrition = connection.execute(
+            """
+            SELECT *
+            FROM health_nutrition_logs
+            WHERE user_id = ?
+              AND date = ?
+            LIMIT 1;
+            """,
+            (user["id"], today_iso()),
+        ).fetchone()
+
+        if weight_goal:
+            start_weight = weight_goal["start_value"]
+            goal_weight = weight_goal["target_value"]
+            current_weight = latest_weight["weight_kg"] if latest_weight else weight_goal["current_value"]
+            progress = calculate_progress(start_weight, current_weight, goal_weight)
+        else:
+            start_weight = None
+            current_weight = latest_weight["weight_kg"] if latest_weight else None
+            goal_weight = None
+            progress = 0
+
+        return {
+            "user_name": user["name"],
+            "current_weight": current_weight,
+            "start_weight": start_weight,
+            "goal_weight": goal_weight,
+            "weight_progress": progress,
+            "calories": today_nutrition["calories"] if today_nutrition else None,
+            "protein": today_nutrition["protein_g"] if today_nutrition else None,
+        }
+
+    finally:
+        connection.close()
