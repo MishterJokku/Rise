@@ -1,10 +1,13 @@
 import sys
 from PySide6.QtWidgets import QApplication
 
+from core.database import initialize_database
 from ui.main_window import MainWindow
 
 
 def main():
+    initialize_database()
+
     app = QApplication(sys.argv)
 
     window = MainWindow()
