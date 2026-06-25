@@ -9,10 +9,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from ui.dashboard import DashboardPage
+from ui.onboarding import OnboardingPage
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, show_onboarding=False):
         super().__init__()
 
         self.setWindowTitle("Rise")
@@ -44,6 +45,17 @@ class MainWindow(QMainWindow):
             }
         """)
 
+        if show_onboarding:
+            self.show_onboarding()
+        else:
+            self.show_main_app()
+
+    def show_onboarding(self):
+        onboarding = OnboardingPage()
+        onboarding.completed.connect(self.show_main_app)
+        self.setCentralWidget(onboarding)
+
+    def show_main_app(self):
         root = QWidget()
         root_layout = QHBoxLayout(root)
         root_layout.setContentsMargins(0, 0, 0, 0)
