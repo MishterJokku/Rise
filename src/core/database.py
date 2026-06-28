@@ -474,3 +474,116 @@ def get_checkin_history(limit=30):
 
     finally:
         connection.close()
+
+
+def get_health_summary():
+    connection = get_connection()
+
+    try:
+        user = connection.execute(
+            """
+            SELECT *
+            FROM users
+            ORDER BY id ASC
+            LIMIT 1;
+            """
+        ).fetchone()
+
+        if user is None:
+            return None
+
+        weight_goal = connection.execute(
+            """
+            SELECT *
+            FROM goals
+            WHERE user_id = ?
+              AND module_key = 'health'
+              AND goal_type = 'weight'
+              AND status = 'active'
+            ORDER BY id DESC
+            LIMIT 1;
+            """,
+            (user["id"],),
+        ).fetchone()
+
+        if weight_goal is None:
+            return None
+
+        latest_weight = connection.execute(
+            """
+            SELECT *
+            FROM health_weight_logs
+            WHERE user_id = ?
+            ORDER BY date DESC, id DESC
+            LIMIT 1;
+            """,
+            (user["id"],),
+        ).fetchone()
+
+        start_weight = weight_goal["start_value"]
+        goal_weight = weight_goal["target_value"]
+        current_weight = latest_weight["weight_kg"] if latest_weight else weight_goal["current_value"]
+        progress = calculate_progress(start_weight, current_weight, goal_weight)
+
+        if current_weight is None or goal_weight is None:
+            remaining_weight = None
+        elif goal_weight < start_weight:
+            remaining_weight = max(0, current_weight - goal_weight)
+        else:
+            remaining_weight = max(0, goal_weight - current_weight)
+
+        if remaining_weight is not None:
+            remaining_weight = round(remaining_weight, 1)
+
+        return {
+            "current_weight": current_weight,
+            "start_weight": start_weight,
+            "goal_weight": goal_weight,
+            "weight_progress": progress,
+            "remaining_weight": remaining_weight,
+            "latest_weight_date": latest_weight["date"] if latest_weight else None,
+        }
+
+    finally:
+        connection.close()
+
+
+def get_weight_history(limit=30):
+    connection = get_connection()
+
+    try:
+        user = connection.execute(
+            """
+            SELECT *
+            FROM users
+            ORDER BY id ASC
+            LIMIT 1;
+            """
+        ).fetchone()
+
+        if user is None:
+            return []
+
+        safe_limit = max(1, int(limit))
+
+        rows = connection.execute(
+            """
+            SELECT date, weight_kg
+            FROM health_weight_logs
+            WHERE user_id = ?
+            ORDER BY date DESC, id DESC
+            LIMIT ?;
+            """,
+            (user["id"], safe_limit),
+        ).fetchall()
+
+        return [
+            {
+                "date": row["date"],
+                "weight": row["weight_kg"],
+            }
+            for row in rows
+        ]
+
+    finally:
+        connection.close()
