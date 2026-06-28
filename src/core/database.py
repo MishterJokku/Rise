@@ -194,6 +194,17 @@ def get_dashboard_data():
             (user["id"], today_iso()),
         ).fetchone()
 
+        today_checkin = connection.execute(
+            """
+            SELECT *
+            FROM daily_checkins
+            WHERE user_id = ?
+              AND date = ?
+            LIMIT 1;
+            """,
+            (user["id"], today_iso()),
+        ).fetchone()
+
         if weight_goal:
             start_weight = weight_goal["start_value"]
             goal_weight = weight_goal["target_value"]
@@ -213,7 +224,176 @@ def get_dashboard_data():
             "weight_progress": progress,
             "calories": today_nutrition["calories"] if today_nutrition else None,
             "protein": today_nutrition["protein_g"] if today_nutrition else None,
+            "mood": today_checkin["mood_score"] if today_checkin else None,
+            "energy": today_checkin["energy_score"] if today_checkin else None,
+            "stress": today_checkin["stress_score"] if today_checkin else None,
+            "sleep_hours": today_checkin["sleep_hours"] if today_checkin else None,
         }
+
+    finally:
+        connection.close()
+
+
+def get_today_checkin_data():
+    connection = get_connection()
+    today = today_iso()
+
+    try:
+        user = connection.execute(
+            """
+            SELECT *
+            FROM users
+            ORDER BY id ASC
+            LIMIT 1;
+            """
+        ).fetchone()
+
+        if user is None:
+            return None
+
+        weight_log = connection.execute(
+            """
+            SELECT *
+            FROM health_weight_logs
+            WHERE user_id = ?
+              AND date = ?
+            LIMIT 1;
+            """,
+            (user["id"], today),
+        ).fetchone()
+
+        nutrition_log = connection.execute(
+            """
+            SELECT *
+            FROM health_nutrition_logs
+            WHERE user_id = ?
+              AND date = ?
+            LIMIT 1;
+            """,
+            (user["id"], today),
+        ).fetchone()
+
+        checkin = connection.execute(
+            """
+            SELECT *
+            FROM daily_checkins
+            WHERE user_id = ?
+              AND date = ?
+            LIMIT 1;
+            """,
+            (user["id"], today),
+        ).fetchone()
+
+        mind_log = connection.execute(
+            """
+            SELECT *
+            FROM mind_logs
+            WHERE user_id = ?
+              AND date = ?
+            LIMIT 1;
+            """,
+            (user["id"], today),
+        ).fetchone()
+
+        return {
+            "date": today,
+            "weight": weight_log["weight_kg"] if weight_log else None,
+            "calories": nutrition_log["calories"] if nutrition_log else None,
+            "protein": nutrition_log["protein_g"] if nutrition_log else None,
+            "mood": checkin["mood_score"] if checkin else (mind_log["mood_score"] if mind_log else None),
+            "energy": checkin["energy_score"] if checkin else (mind_log["energy_score"] if mind_log else None),
+            "stress": checkin["stress_score"] if checkin else (mind_log["stress_score"] if mind_log else None),
+            "sleep_hours": checkin["sleep_hours"] if checkin else (mind_log["sleep_hours"] if mind_log else None),
+            "notes": checkin["notes"] if checkin else (mind_log["journal"] if mind_log else ""),
+        }
+
+    finally:
+        connection.close()
+
+
+def save_daily_checkin(weight, calories, protein, mood, energy, stress, sleep_hours, notes):
+    connection = get_connection()
+    timestamp = now_iso()
+    today = today_iso()
+
+    try:
+        user = connection.execute(
+            """
+            SELECT *
+            FROM users
+            ORDER BY id ASC
+            LIMIT 1;
+            """
+        ).fetchone()
+
+        if user is None:
+            raise ValueError("A user profile is required before saving a daily check-in.")
+
+        user_id = user["id"]
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO health_weight_logs
+            (user_id, date, weight_kg, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, date) DO UPDATE SET
+                weight_kg = excluded.weight_kg,
+                updated_at = excluded.updated_at;
+            """,
+            (user_id, today, weight, timestamp, timestamp),
+        )
+
+        cursor.execute(
+            """
+            INSERT INTO health_nutrition_logs
+            (user_id, date, calories, protein_g, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, date) DO UPDATE SET
+                calories = excluded.calories,
+                protein_g = excluded.protein_g,
+                updated_at = excluded.updated_at;
+            """,
+            (user_id, today, calories, protein, timestamp, timestamp),
+        )
+
+        cursor.execute(
+            """
+            INSERT INTO daily_checkins
+            (user_id, date, mood_score, energy_score, stress_score, sleep_hours, notes, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, date) DO UPDATE SET
+                mood_score = excluded.mood_score,
+                energy_score = excluded.energy_score,
+                stress_score = excluded.stress_score,
+                sleep_hours = excluded.sleep_hours,
+                notes = excluded.notes,
+                updated_at = excluded.updated_at;
+            """,
+            (user_id, today, mood, energy, stress, sleep_hours, notes, timestamp, timestamp),
+        )
+
+        cursor.execute(
+            """
+            INSERT INTO mind_logs
+            (user_id, date, mood_score, energy_score, stress_score, sleep_hours, journal, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, date) DO UPDATE SET
+                mood_score = excluded.mood_score,
+                energy_score = excluded.energy_score,
+                stress_score = excluded.stress_score,
+                sleep_hours = excluded.sleep_hours,
+                journal = excluded.journal,
+                updated_at = excluded.updated_at;
+            """,
+            (user_id, today, mood, energy, stress, sleep_hours, notes, timestamp, timestamp),
+        )
+
+        connection.commit()
+
+    except Exception:
+        connection.rollback()
+        raise
 
     finally:
         connection.close()
