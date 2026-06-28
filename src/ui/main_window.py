@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from ui.dashboard import DashboardPage
+from ui.health import HealthPage
 from ui.history import HistoryPage
 from ui.onboarding import OnboardingPage
 
@@ -77,6 +78,9 @@ class MainWindow(QMainWindow):
     def show_dashboard(self):
         self.set_page(DashboardPage())
 
+    def show_health(self):
+        self.set_page(HealthPage())
+
     def show_history(self):
         self.set_page(HistoryPage())
 
@@ -134,6 +138,8 @@ class MainWindow(QMainWindow):
             button = QPushButton(item)
             if item == "Dashboard":
                 button.clicked.connect(self.show_dashboard)
+            elif item == "Health":
+                button.clicked.connect(self.show_health)
             elif item == "History":
                 button.clicked.connect(self.show_history)
             layout.addWidget(button)
