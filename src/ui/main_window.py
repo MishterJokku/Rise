@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from ui.dashboard import DashboardPage
+from ui.history import HistoryPage
 from ui.onboarding import OnboardingPage
 
 
@@ -62,12 +63,31 @@ class MainWindow(QMainWindow):
         root_layout.setSpacing(0)
 
         sidebar = self.create_sidebar()
-        dashboard = DashboardPage()
+        self.page_container = QWidget()
+        self.page_layout = QVBoxLayout(self.page_container)
+        self.page_layout.setContentsMargins(0, 0, 0, 0)
+        self.page_layout.setSpacing(0)
 
         root_layout.addWidget(sidebar)
-        root_layout.addWidget(dashboard, 1)
+        root_layout.addWidget(self.page_container, 1)
 
         self.setCentralWidget(root)
+        self.show_dashboard()
+
+    def show_dashboard(self):
+        self.set_page(DashboardPage())
+
+    def show_history(self):
+        self.set_page(HistoryPage())
+
+    def set_page(self, page):
+        while self.page_layout.count():
+            item = self.page_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+        self.page_layout.addWidget(page)
 
     def create_sidebar(self):
         sidebar = QWidget()
@@ -112,6 +132,10 @@ class MainWindow(QMainWindow):
 
         for item in nav_items:
             button = QPushButton(item)
+            if item == "Dashboard":
+                button.clicked.connect(self.show_dashboard)
+            elif item == "History":
+                button.clicked.connect(self.show_history)
             layout.addWidget(button)
 
         layout.addStretch()

@@ -397,3 +397,80 @@ def save_daily_checkin(weight, calories, protein, mood, energy, stress, sleep_ho
 
     finally:
         connection.close()
+
+
+def get_checkin_history(limit=30):
+    connection = get_connection()
+
+    try:
+        user = connection.execute(
+            """
+            SELECT *
+            FROM users
+            ORDER BY id ASC
+            LIMIT 1;
+            """
+        ).fetchone()
+
+        if user is None:
+            return []
+
+        safe_limit = max(1, int(limit))
+
+        rows = connection.execute(
+            """
+            WITH checkin_dates AS (
+                SELECT user_id, date FROM health_weight_logs WHERE user_id = ?
+                UNION
+                SELECT user_id, date FROM health_nutrition_logs WHERE user_id = ?
+                UNION
+                SELECT user_id, date FROM daily_checkins WHERE user_id = ?
+                UNION
+                SELECT user_id, date FROM mind_logs WHERE user_id = ?
+            )
+            SELECT
+                checkin_dates.date,
+                weight.weight_kg,
+                nutrition.calories,
+                nutrition.protein_g,
+                COALESCE(checkins.mood_score, mind.mood_score) AS mood_score,
+                COALESCE(checkins.energy_score, mind.energy_score) AS energy_score,
+                COALESCE(checkins.stress_score, mind.stress_score) AS stress_score,
+                COALESCE(checkins.sleep_hours, mind.sleep_hours) AS sleep_hours,
+                COALESCE(checkins.notes, mind.journal, '') AS notes
+            FROM checkin_dates
+            LEFT JOIN health_weight_logs AS weight
+                ON weight.user_id = checkin_dates.user_id
+               AND weight.date = checkin_dates.date
+            LEFT JOIN health_nutrition_logs AS nutrition
+                ON nutrition.user_id = checkin_dates.user_id
+               AND nutrition.date = checkin_dates.date
+            LEFT JOIN daily_checkins AS checkins
+                ON checkins.user_id = checkin_dates.user_id
+               AND checkins.date = checkin_dates.date
+            LEFT JOIN mind_logs AS mind
+                ON mind.user_id = checkin_dates.user_id
+               AND mind.date = checkin_dates.date
+            ORDER BY checkin_dates.date DESC
+            LIMIT ?;
+            """,
+            (user["id"], user["id"], user["id"], user["id"], safe_limit),
+        ).fetchall()
+
+        return [
+            {
+                "date": row["date"],
+                "weight": row["weight_kg"],
+                "calories": row["calories"],
+                "protein": row["protein_g"],
+                "mood": row["mood_score"],
+                "energy": row["energy_score"],
+                "stress": row["stress_score"],
+                "sleep_hours": row["sleep_hours"],
+                "notes": row["notes"],
+            }
+            for row in rows
+        ]
+
+    finally:
+        connection.close()
